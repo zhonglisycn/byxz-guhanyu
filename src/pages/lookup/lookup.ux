@@ -1,0 +1,253 @@
+<import name="input-method" src="../../components/InputMethod/InputMethod.ux"></import>
+
+<template>
+  <div class="page">
+    <scroll class="scroll" scroll-y="true" bounces="true">
+      <div class="toptitle">
+        <text class="t-title" style="font-size: 18px">查字</text>
+      </div>
+      <div class="topnav">
+        <text class="t-nav" style="font-size: 16px; width: 76px; height: 34px" @click="back">‹ 返回</text>
+        <text class="t-nav" style="font-size: 16px; width: 76px; height: 34px" @click="clear">清空</text>
+      </div>
+
+      <div class="padwrap">
+        <!-- 搜索框：点一下开键盘，再点一下关键盘 -->
+        <div class="searchbox {{kbOn ? 'on' : ''}}" @click="toggleKb">
+          <text class="s-text" style="font-size: 18px">{{title}}</text>
+          <text class="s-hint" style="font-size: 12px">{{kbOn ? '点击收起' : '点击输入'}}</text>
+        </div>
+        <text class="t-sub" style="font-size: 12px; width: 100%">{{hint}}</text>
+      </div>
+
+      <!-- 拼音候选：点一个字看词条 -->
+      <div class="padwrap" if="{{cands.length}}">
+        <div class="grid">
+          <text class="cand" for="{{cands}}" tid="h" style="font-size: 19px" @click="pick($item)">{{$item}}</text>
+        </div>
+      </div>
+
+      <!-- 词条预览 -->
+      <div class="padwrap" if="{{cur}}">
+        <div class="card">
+          <text class="c-head" style="font-size: 24px">{{head}}</text>
+          <text class="c-sub" style="font-size: 12px" if="{{sub}}">{{sub}}</text>
+          <div class="blk" for="{{prev}}" tid="i">
+            <text class="b-k {{$item.t}}" if="{{$item.k}}" style="font-size: 12px">{{$item.k}}</text>
+            <text class="b-g {{$item.t}}" if="{{$item.g}}" style="font-size: 14px">{{$item.g}}</text>
+            <text class="b-c {{$item.t}}" if="{{$item.c}}" style="font-size: 12px">{{$item.c}}</text>
+          </div>
+        </div>
+        <div class="btn btn-primary" @click="open">
+          <text class="t-btn" style="font-size: 15px">看全部 {{senseN}} 条</text>
+        </div>
+        <div class="btn btn-ghost" @click="fav">
+          <text class="t-btn" style="font-size: 15px">{{favText}}</text>
+        </div>
+      </div>
+
+      <div class="padwrap" if="{{recentText}}">
+        <text class="t-sub" style="font-size: 12px; width: 100%">最近：{{recentText}}</text>
+      </div>
+      <div class="gap"></div>
+    </scroll>
+
+    <!-- 输入法组件：按需挂载而不是切 hide —— 组件作者在源码里标注 hide watcher 在部分设备不可靠，
+         所以只在需要时把组件建出来，并直接传 hide={{false}} 让它一建出来就是展开的。
+         注意 hide 必须写 {{false}}，字符串 "false" 是 truthy，会被当成隐藏。
+         本页是拼音查词，组件里中文词库/候选行/语言键都保留。 -->
+    <input-method if="{{kbOn}}"
+      hide="{{false}}"
+      keyboardtype="QWERTY"
+      maxlength="8"
+      vibratemode="short"
+      screentype="pill-shaped"
+      @delete="onKbDelete"
+      @complete="onKbComplete"
+    ></input-method>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import { sections, senseCount, isFav } from '../../common/core/dict-format'
+
+export default {
+  private: {
+    kbOn: false,
+    query: '',
+    title: '点搜索框输入',
+    hint: '打拼音（wo / qizi），点候选字看解释',
+    cands: [],
+    cur: null,
+    head: '',
+    sub: '',
+    prev: [],
+    senseN: 0,
+    favText: '收藏',
+    recentText: ''
+  },
+
+  onShow() {
+    const app = this.$app.$def
+    this.recentText = (app.history || []).slice(0, 10).join(' ')
+    if (app.ch) this.show(app.ch)
+  },
+
+  /** 输入法选好字（或打完拼音回车）后统一走 search */
+  onKbComplete(event) {
+    const t = event && event.detail && event.detail.content ? event.detail.content : ''
+    if (!t) return
+    // 这一下组件自己还要做候选重算 + 整棵键盘子树重渲染；页面若在同一帧里查词并渲染词条，
+    // 两波负载会叠在一起（真机表现就是"选汉字就重启"）。把查词推到下一帧，让渲染分帧。
+    const self = this
+    setTimeout(function () { self.run(t) }, 30)
+  },
+
+  onKbDelete() {
+    this.query = this.query.slice(0, -1)
+    if (!this.query) {
+      this.cands = []
+      this.cur = null
+      this.title = '点搜索框输入'
+      this.hint = '打拼音（wo / qizi），点候选字看解释'
+    }
+  },
+
+  run(q) {
+    const self = this
+    this.query = q
+    this.title = q
+    this.$app.$def.search(q, function (res) {
+      if (res.kind === 'err') {
+        self.cands = []
+        self.cur = null
+        self.hint = res.msg
+        return
+      }
+      if (res.kind === 'list') {
+        self.cands = res.list
+        self.cur = null
+        self.hint = res.list.length + ' 个候选'
+        return
+      }
+      self.cands = []
+      self.show(res.entry)
+    })
+  },
+
+  show(e) {
+    if (!e) return
+    const app = this.$app.$def
+    this.cur = e
+    this.head = e.y ? (e.h + '　' + e.y) : e.h
+    const m = []
+    if (e.r) m.push(e.r + '部')
+    if (e.b) m.push(e.b + '画')
+    this.sub = m.join('　')
+    this.prev = sections(e).slice(0, 6)
+    this.senseN = senseCount(e)
+    this.hint = '已收录 · ' + this.senseN + ' 条义项'
+    this.favText = isFav(app.bookmarks || [], e.h) ? '已收藏' : '收藏'
+    app.remember(e.h)
+    this.recentText = (app.history || []).slice(0, 10).join(' ')
+  },
+
+  pick(ch) {
+    if (!ch) return
+    this.$app.$def.tap()
+    this.query = ch
+    this.run(ch)
+  },
+
+  toggleKb() {
+    this.$app.$def.tap()
+    this.kbOn = !this.kbOn
+    if (this.kbOn) this.hint = '打拼音（wo / qizi），点候选字看解释'
+  },
+
+  clear() {
+    this.$app.$def.tap()
+    this.query = ''
+    this.title = '点搜索框输入'
+    this.cands = []
+    this.cur = null
+    this.hint = '打拼音（wo / qizi），点候选字看解释'
+  },
+
+  fav() {
+    if (!this.cur) return
+    const app = this.$app.$def
+    app.tap()
+    this.favText = app.toggleBookmark(this.cur.h) ? '已收藏' : '收藏'
+  },
+
+  open() {
+    if (!this.cur) return
+    this.$app.$def.tap()
+    this.$app.$def.ch = this.cur
+    router.push({ uri: 'pages/entry' })
+  },
+
+  back() { this.$app.$def.tap(); router.back() }
+}
+</script>
+
+<style>
+  @import '../../common/style/base.css';
+  .padwrap { width: 100%; padding-left: 14px; padding-right: 14px; flex-direction: column; flex-shrink: 0; }
+
+  /* 搜索框：点一下开键盘、再点一下关（键盘要整宽，所以页面不留左右内边距给键盘容器） */
+  .searchbox {
+    width: 100%;
+    height: 46px;
+    flex-direction: row;
+    align-items: center;
+    padding-left: 12px;
+    padding-right: 12px;
+    margin-bottom: 6px;
+    flex-shrink: 0;
+    background-color: #1c1c1e;
+    border-radius: 16px;
+  }
+  .searchbox.on { background-color: #2a2a2c; }
+  .s-text { color: #ffffff; flex: 1; }
+  .s-hint { color: #8e8e93; }
+
+  /* 候选字：4 个一行（4×40 + 3×6 = 178，安全宽度 184 内） */
+  .grid { width: 100%; flex-direction: row; flex-wrap: wrap; flex-shrink: 0; margin-top: 8px; }
+  .cand {
+    min-width: 40px;
+    height: 40px;
+    padding-left: 9px;
+    padding-right: 9px;
+    margin-right: 6px;
+    margin-bottom: 6px;
+    text-align: center;
+    color: #ffffff;
+    background-color: #1c1c1e;
+    border-radius: 12px;
+  }
+
+  .card {
+    width: 100%;
+    flex-direction: column;
+    flex-shrink: 0;
+    background-color: #141414;
+    border-radius: 14px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+  }
+  .c-head { color: #ffffff; width: 100%; }
+  .c-sub { color: #8e8e93; width: 100%; }
+
+  .blk { width: 100%; flex-direction: column; flex-shrink: 0; margin-top: 6px; }
+  .b-k { color: #f7b336; width: 100%; }
+  .b-g { color: #e6e9ee; width: 100%; }
+  .b-c { color: #7aa7ff; width: 100%; }
+  .hd { color: #54cc58; }
+  .pos { color: #ffffff; }
+
+  .btn { width: 100%; height: 40px; align-items: center; justify-content: center; margin-bottom: 8px; flex-shrink: 0; }
+  .gap { width: 100%; height: 12px; }
+</style>

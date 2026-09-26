@@ -1,0 +1,93 @@
+<template>
+  <div class="page">
+    <scroll class="scroll" scroll-y="true" bounces="true">
+      <div class="toptitle">
+        <text class="t-title" style="font-size: 18px">关于</text>
+      </div>
+      <div class="topnav">
+        <text class="t-nav" style="font-size: 16px; width: 76px; height: 34px" @click="back">‹ 返回</text>
+        <text class="t-nav" style="font-size: 16px; width: 76px; height: 34px"></text>
+      </div>
+
+      <text class="sec" style="font-size: 13px">词库</text>
+      <div class="row">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 16px">{{libText}}</text>
+          <text class="row-sub" style="font-size: 13px">别名 {{alias}} 个 · 拼音 {{pyKeys}} 键 · 全部常驻内存，查字 O(1)</text>
+        </div>
+      </div>
+
+      <text class="sec" style="font-size: 13px">数据来源</text>
+      <div class="row" for="{{srcs}}" tid="k">
+        <div class="row-main">
+          <text class="row-sub" style="font-size: 13px">{{$item}}</text>
+        </div>
+      </div>
+
+      <text class="sec" style="font-size: 13px">设备（键盘居中要用）</text>
+      <div class="row">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 15px">{{devText}}</text>
+          <text class="row-sub" style="font-size: 13px">输入法按 (屏宽-192)/2 自己定位，把这一行发我就能算准偏移</text>
+        </div>
+      </div>
+
+      <text class="sec" style="font-size: 13px">开源与致谢</text>
+      <div class="row">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 15px">输入法组件</text>
+          <text class="row-sub" style="font-size: 13px">vela-shuangpin（MIT, Copyright 2024 NEORUAA）：全拼/双拼五种方案</text>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 15px">本工程</text>
+          <text class="row-sub" style="font-size: 13px">MIT · 作者 模糊二维码byxz · 界面参考手环 UI 设计稿</text>
+        </div>
+      </div>
+      <div class="gap"></div>
+    </scroll>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import device from '@system.device'
+
+export default {
+  private: {
+    libText: '词库加载中…',
+    alias: 0,
+    pyKeys: 0,
+    srcs: [],
+    devText: '设备信息读取中…'
+  },
+
+  onShow() {
+    const app = this.$app.$def
+    const self = this
+    // 输入法组件的横向定位已改为写死 0（组件盒子就等于整屏宽），不再依赖屏幕宽度，
+    // screenWidth 到底给的是物理值还是设计值，只能从真机读出来。
+    device.getInfo({
+      success: function (r) {
+        self.devText = '屏 ' + r.screenWidth + ' × ' + r.screenHeight
+          + ' · 形状 ' + r.screenShape + ' · 设计基准 192px'
+      },
+      fail: function () { self.devText = '设备信息读取失败' }
+    })
+    // 词库数据只在 app 一处（页面直接 import 会让每页字节码各带一份，真机重启）
+    const st = self.$app.$def.dictStats()
+    self.libText = '收 ' + st.count + ' 条'
+    self.alias = st.alias
+    self.pyKeys = st.pinyinKeys
+    self.srcs = (self.$app.$def.dictSources() || '').split('\n').filter(Boolean)
+  },
+
+  back() { this.$app.$def.tap(); router.back() }
+}
+</script>
+
+<style>
+  @import '../../common/style/base.css';
+  .gap { width: 100%; height: 12px; }
+</style>

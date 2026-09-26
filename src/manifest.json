@@ -1,0 +1,33 @@
+{
+  "package": "com.byxz.guhanyu",
+  "name": "古汉语词典",
+  "versionName": "3.3.0",
+  "versionCode": 314,
+  "minPlatformVersion": 1000,
+  "icon": "/common/icon/logo.png",
+  "deviceTypeList": [
+    "watch"
+  ],
+  "description": "古诗文词典 · 1273 条（单字 + 古今异义复词 + 固定结构 + 意象词）· byxz",
+  "features": [
+    { "name": "system.router" },
+    { "name": "system.storage" },
+    { "name": "system.vibrator" },
+    { "name": "system.file" },
+    { "name": "system.device" }
+  ],
+  "config": {
+    "logLevel": "log",
+    "designWidth": "device-width"
+  },
+  "router": {
+    "entry": "pages/home",
+    "pages": {
+      "pages/home": { "component": "home" },
+      "pages/lookup": { "component": "lookup" },
+      "pages/entry": { "component": "entry" },
+      "pages/about": { "component": "about" }
+    }
+  },
+  "minAPILevel": 1
+}

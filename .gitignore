@@ -1,0 +1,26 @@
+# ---------- 依赖与构建产物 ----------
+node_modules/
+dist/
+build/
+.temp_*/
+*.log
+
+# ---------- 工具产生的临时目录 ----------
+.ct-*/
+tools/preview/.work/
+tools/preview/out/
+tools/.bench/
+tools/.existing-keys.txt
+
+# ---------- 第三方组件与本机资料 ----------
+src/components/InputMethod/assets/full/
+src/components/InputMethod/assets/t9/
+src/components/InputMethod/assets/horizontal/
+docs/*.png
+tools/preview/prew-upstream.png
+
+# ---------- 开发期临时脚本/清单 ----------
+.list1000.txt
+.top1000.txt
+.gloss-top.txt
+tools/.mem-bench.mjs

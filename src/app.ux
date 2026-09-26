@@ -1,0 +1,74 @@
+<script>
+/**
+ * 应用级：查询入口 + 收藏/历史存档。
+ * 词库是内存里的一份数据，查询就是查表。
+ */
+import vibrator from '@system.vibrator'
+import { loadKey, saveKey } from './common/core/util'
+import { entryOf, aliasOf, pinyinSearch, pushRecent, toggleFav, total, stats, sourceText } from './common/core/dict.js'
+
+const LATIN = /^[A-Za-z\u00c0-\u01ff' ]+$/
+
+export default {
+  bookmarks: [],
+  history: [],
+  vib: true,
+  ch: null,           // 页面之间传词条
+
+  onCreate() {
+    loadKey('dict_fav', (ok, v) => { if (ok && v) { try { this.bookmarks = JSON.parse(v) || [] } catch (e) {} } })
+    loadKey('dict_his', (ok, v) => { if (ok && v) { try { this.history = JSON.parse(v) || [] } catch (e) {} } })
+  },
+
+  /** 词库统计（词库数据只在 app 这一处，页面通过这里取，避免每页字节码各内联一份） */
+  dictStats() { return stats() },
+
+  /** 数据来源说明 */
+  dictSources() { return sourceText() },
+
+  tap() {
+    if (!this.vib) return
+    try { vibrator.vibrate({ mode: 'short' }) } catch (e) {}
+  },
+
+  /**
+   * 统一查询入口。cb(res)：
+   *   { kind:'entry', entry }   查到词条
+   *   { kind:'list', list:[…] } 拼音候选
+   *   { kind:'err', msg }
+   * 拉丁字母走拼音索引；汉字先看是不是繁体/异体写法，再查字头。
+   */
+  search(q, cb) {
+    const s = String(q || '').trim()
+    if (!s) { cb({ kind: 'err', msg: '输入汉字或拼音' }); return }
+    if (LATIN.test(s)) {
+      const key = s.replace(/['\u2019\s]/g, '').toLowerCase()
+      let list = pinyinSearch(key)
+      if (!list || !list.length) list = pinyinSearch(s.toLowerCase())
+      if (!list || !list.length) { cb({ kind: 'err', msg: '没有「' + s + '」这个读音的字' }); return }
+      cb({ kind: 'list', list: list.slice(0, 60), key: key })
+      return
+    }
+    const e = entryOf(s)
+    if (!e) {
+      const al = aliasOf(s)
+      cb({ kind: 'err', msg: al ? ('「' + s + '」见「' + al[0] + '」') : ('词库暂未收「' + s + '」（已收 ' + total() + ' 条）') })
+      return
+    }
+    cb({ kind: 'entry', entry: e })
+  },
+
+  /** 查过就记进历史（去重、最新在前） */
+  remember(ch) {
+    this.history = pushRecent(this.history, ch, 60)
+    saveKey('dict_his', JSON.stringify(this.history), null)
+  },
+
+  toggleBookmark(ch) {
+    const r = toggleFav(this.bookmarks, ch)
+    this.bookmarks = r.list
+    saveKey('dict_fav', JSON.stringify(this.bookmarks), null)
+    return r.added
+  }
+}
+</script>

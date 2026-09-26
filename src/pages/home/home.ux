@@ -1,0 +1,75 @@
+<template>
+  <div class="page">
+    <scroll class="scroll" scroll-y="true" bounces="true">
+      <div class="toptitle">
+        <text class="t-title" style="font-size: 18px">古汉语词典</text>
+      </div>
+      <div class="topnav">
+        <text class="t-nav" style="font-size: 16px; width: 76px; height: 34px"></text>
+        <text class="t-nav" style="font-size: 16px; width: 76px; height: 34px" @click="goAbout">关于</text>
+      </div>
+
+      <text class="sec" style="font-size: 13px">查字</text>
+      <div class="row" @click="goLookup">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 17px">开始查字</text>
+          <text class="row-sub" style="font-size: 13px">输汉字或拼音 · 按词性分条看今译</text>
+        </div>
+        <text class="row-go" style="font-size: 19px">›</text>
+      </div>
+
+      <text class="sec" style="font-size: 13px">本机记录</text>
+      <div class="row">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 17px">最近查过</text>
+          <text class="row-sub" style="font-size: 13px">{{hisText}}</text>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 17px">收藏</text>
+          <text class="row-sub" style="font-size: 13px">{{favText}}</text>
+        </div>
+      </div>
+
+      <text class="sec" style="font-size: 13px">词库</text>
+      <div class="row">
+        <div class="row-main">
+          <text class="row-title" style="font-size: 16px">{{libText}}</text>
+          <text class="row-sub" style="font-size: 13px">词条人工撰写：词性 · 今译 · 例句</text>
+        </div>
+      </div>
+      <div class="gap"></div>
+    </scroll>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+
+export default {
+  private: {
+    hisText: '—',
+    favText: '—',
+    libText: '词库加载中…'
+  },
+
+  onShow() {
+    const app = this.$app.$def
+    this.hisText = (app.history || []).length ? app.history.slice(0, 12).join(' ') : '还没有查过'
+    this.favText = (app.bookmarks || []).length ? app.bookmarks.join(' ') : '还没有收藏'
+    const self = this
+    // 词库是内存里的数据，直接取（以前这里调的是分片时代的 ensureIndex，函数早就不存在了）
+    const st = self.$app.$def.dictStats()
+    self.libText = '收 ' + st.count + ' 条 · 别名 ' + st.alias
+  },
+
+  goLookup() { this.$app.$def.tap(); router.push({ uri: 'pages/lookup' }) },
+  goAbout() { this.$app.$def.tap(); router.push({ uri: 'pages/about' }) }
+}
+</script>
+
+<style>
+  @import '../../common/style/base.css';
+  .gap { width: 100%; height: 12px; }
+</style>

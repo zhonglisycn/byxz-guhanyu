@@ -1,0 +1,282 @@
+<!--
+  备选方案：自带字母键盘的查字页（不含第三方输入法）
+  ---------------------------------------------------------------
+  切换方法：
+    1. cp docs/alt-lookup-letterpad.ux src/pages/lookup/lookup.ux
+    2. 删掉 src/components/InputMethod（不进包）
+    3. 若还需要「打一个字母就出候选」，在 src/common/core/dict.js 里给 pinyinSearch 加前缀回退
+       （做法见 skill 9.6 节）
+  这一版的取舍：包 758KB → 134KB、键盘只有 27 个文字节点、零图片零词库，
+  按键只做一次哈希查表；代价是没有输入法的候选引擎，只能"打拼音→点候选字"。
+-->
+<template>
+  <div class="page">
+    <scroll class="scroll" scroll-y="true" bounces="true">
+      <div class="toptitle">
+        <text class="t-title" style="font-size: 18px">查字</text>
+      </div>
+      <div class="topnav">
+        <text class="t-nav" style="font-size: 16px; width: 76px; height: 34px" @click="back">‹ 返回</text>
+        <text class="t-nav" style="font-size: 16px; width: 76px; height: 34px" @click="clear">清空</text>
+      </div>
+
+      <div class="padwrap">
+        <div class="searchbox {{kbShow ? 'on' : ''}}" @click="toggleKb">
+          <text class="s-text" style="font-size: 18px">{{title}}</text>
+          <text class="s-hint" style="font-size: 12px">{{kbShow ? '点击收起' : '点击输入'}}</text>
+        </div>
+        <text class="t-sub" style="font-size: 12px; width: 100%">{{hint}}</text>
+      </div>
+
+      <!-- 候选：固定 24 个槽位（用 show 切显隐）——按键只改文字、不增删节点 -->
+      <div class="padwrap" if="{{hasCands}}">
+        <div class="grid">
+          <text class="cand" for="{{cands}}" tid="h" show="{{$item}}" style="font-size: 19px" @click="pick($item)">{{$item}}</text>
+        </div>
+      </div>
+
+      <div class="padwrap" if="{{cur}}">
+        <div class="card">
+          <text class="c-head" style="font-size: 24px">{{head}}</text>
+          <text class="c-sub" style="font-size: 12px" if="{{sub}}">{{sub}}</text>
+          <div class="blk" for="{{prev}}" tid="i">
+            <text class="b-k {{$item.t}}" if="{{$item.k}}" style="font-size: 12px">{{$item.k}}</text>
+            <text class="b-g {{$item.t}}" if="{{$item.g}}" style="font-size: 14px">{{$item.g}}</text>
+            <text class="b-c {{$item.t}}" if="{{$item.c}}" style="font-size: 12px">{{$item.c}}</text>
+          </div>
+        </div>
+        <div class="btn btn-primary" @click="open">
+          <text class="t-btn" style="font-size: 15px">看全部 {{senseN}} 条</text>
+        </div>
+        <div class="btn btn-ghost" @click="fav">
+          <text class="t-btn" style="font-size: 15px">{{favText}}</text>
+        </div>
+      </div>
+
+      <div class="padwrap" if="{{recentText}}">
+        <text class="t-sub" style="font-size: 12px; width: 100%">最近：{{recentText}}</text>
+      </div>
+      <div class="gap"></div>
+    </scroll>
+
+    <!-- 自带字母键盘：27 个文字节点，没有图片、没有词库、不建候选引擎 -->
+    <div class="kb" if="{{kbShow}}">
+      <text class="key" for="{{keys}}" tid="k" @click="tapKey($item)">{{$item}}</text>
+    </div>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import { sections, senseCount, isFav } from '../../common/core/dict'
+
+const KEYS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+  'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '⌫']
+const SLOTS = 24
+
+export default {
+  private: {
+    kbShow: false,
+    query: '',
+    title: '点这里输入拼音',
+    hint: '点搜索框开键盘 · 打拼音选字',
+    cands: new Array(SLOTS).fill(''),
+    hasCands: false,
+    cur: null,
+    head: '',
+    sub: '',
+    prev: [],
+    senseN: 0,
+    favText: '收藏',
+    recentText: '',
+    keys: KEYS
+  },
+
+  onShow() {
+    const app = this.$app.$def
+    this.recentText = (app.history || []).slice(0, 10).join(' ')
+    if (app.ch) this.show(app.ch)
+  },
+
+  /** 点字母：改查询串后立刻重查。纯查表，不振动 */
+  tapKey(k) {
+    if (k === '⌫') this.query = this.query.slice(0, -1)
+    else if (this.query.length < 12) this.query = this.query + k.toLowerCase()
+    if (!this.query) {
+      this.title = '点这里输入拼音'
+      this.setCands([])
+      this.cur = null
+      this.hint = '打拼音（wo / qizi），点候选字看解释'
+      return
+    }
+    this.run(this.query)
+  },
+
+  run(q) {
+    const self = this
+    this.title = q
+    this.$app.$def.search(q, function (res) {
+      if (res.kind === 'err') {
+        self.setCands([])
+        self.cur = null
+        self.hint = res.msg
+        return
+      }
+      if (res.kind === 'list') {
+        self.setCands(res.list)
+        self.cur = null
+        self.hint = res.list.length + ' 个候选'
+        return
+      }
+      self.setCands([])
+      self.show(res.entry)
+    })
+  },
+
+  /** 分段填候选：先填前 8 个，其余下一拍补上 */
+  setCands(list) {
+    const self = this
+    const arr = new Array(SLOTS).fill('')
+    for (let i = 0; i < list.length && i < SLOTS; i++) arr[i] = list[i]
+    this.hasCands = list.length > 0
+    if (list.length <= 8) { this.cands = arr; return }
+    const first = arr.slice()
+    for (let i = 8; i < SLOTS; i++) first[i] = ''
+    this.cands = first
+    setTimeout(function () { if (self.hasCands) self.cands = arr }, 16)
+  },
+
+  show(e) {
+    if (!e) return
+    const app = this.$app.$def
+    this.cur = e
+    this.head = e.y ? (e.h + '　' + e.y) : e.h
+    const m = []
+    if (e.r) m.push(e.r + '部')
+    if (e.b) m.push(e.b + '画')
+    this.sub = m.join('　')
+    this.prev = sections(e).slice(0, 7)
+    this.senseN = senseCount(e)
+    this.hint = '已收录 · ' + this.senseN + ' 条义项'
+    this.favText = isFav(app.bookmarks || [], e.h) ? '已收藏' : '收藏'
+    app.remember(e.h)
+    this.recentText = (app.history || []).slice(0, 10).join(' ')
+  },
+
+  pick(ch) {
+    if (!ch) return
+    this.$app.$def.tap()
+    this.query = ch
+    this.run(ch)
+  },
+
+  toggleKb() {
+    this.$app.$def.tap()
+    this.kbShow = !this.kbShow
+    this.hint = this.kbShow ? '打拼音（wo / qizi），点候选字看解释' : '点搜索框开键盘 · 打拼音选字'
+  },
+
+  clear() {
+    this.$app.$def.tap()
+    this.query = ''
+    this.title = '点这里输入拼音'
+    this.setCands([])
+    this.cur = null
+    this.hint = '打拼音（wo / qizi），点候选字看解释'
+  },
+
+  fav() {
+    if (!this.cur) return
+    const app = this.$app.$def
+    app.tap()
+    this.favText = app.toggleBookmark(this.cur.h) ? '已收藏' : '收藏'
+  },
+
+  open() {
+    if (!this.cur) return
+    this.$app.$def.tap()
+    this.$app.$def.ch = this.cur
+    router.push({ uri: 'pages/entry' })
+  },
+
+  back() { this.$app.$def.tap(); router.back() }
+}
+</script>
+
+<style>
+  @import '../../common/style/base.css';
+  .padwrap { width: 100%; padding-left: 14px; padding-right: 14px; flex-direction: column; flex-shrink: 0; }
+
+  .searchbox {
+    width: 100%;
+    height: 46px;
+    flex-direction: row;
+    align-items: center;
+    padding-left: 12px;
+    padding-right: 12px;
+    margin-bottom: 6px;
+    flex-shrink: 0;
+    background-color: #1c1c1e;
+    border-radius: 16px;
+  }
+  .searchbox.on { background-color: #2a2a2c; }
+  .s-text { color: #ffffff; flex: 1; }
+  .s-hint { color: #8e8e93; }
+
+  .grid { width: 100%; flex-direction: row; flex-wrap: wrap; flex-shrink: 0; margin-top: 8px; }
+  .cand {
+    min-width: 40px;
+    height: 40px;
+    padding-left: 9px;
+    padding-right: 9px;
+    margin-right: 6px;
+    margin-bottom: 6px;
+    text-align: center;
+    color: #ffffff;
+    background-color: #1c1c1e;
+    border-radius: 12px;
+  }
+
+  .card {
+    width: 100%;
+    flex-direction: column;
+    flex-shrink: 0;
+    background-color: #141414;
+    border-radius: 14px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+  }
+  .c-head { color: #ffffff; width: 100%; }
+  .c-sub { color: #8e8e93; width: 100%; }
+
+  .blk { width: 100%; flex-direction: column; flex-shrink: 0; margin-top: 6px; }
+  .b-k { color: #f7b336; width: 100%; }
+  .b-g { color: #e6e9ee; width: 100%; }
+  .b-c { color: #7aa7ff; width: 100%; }
+  .hd { color: #54cc58; }
+  .pos { color: #ffffff; }
+
+  .btn { width: 100%; height: 40px; align-items: center; justify-content: center; margin-bottom: 8px; flex-shrink: 0; }
+  .gap { width: 100%; height: 12px; }
+
+  .kb {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    padding-top: 4px;
+    padding-bottom: 4px;
+    flex-shrink: 0;
+    background-color: #101012;
+  }
+  .key {
+    width: 29px;
+    height: 29px;
+    margin: 1px;
+    text-align: center;
+    color: #ffffff;
+    background-color: #2c2c2e;
+    border-radius: 8px;
+    font-size: 15px;
+  }
+</style>

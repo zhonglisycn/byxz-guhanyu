@@ -1,0 +1,88 @@
+<template>
+  <div class="page">
+    <scroll class="scroll" scroll-y="true" bounces="true">
+      <div class="toptitle">
+        <text class="t-title" style="font-size: 20px">{{head}}</text>
+      </div>
+      <div class="topnav">
+        <text class="t-nav" style="font-size: 16px; width: 76px; height: 34px" @click="back">‹ 返回</text>
+        <text class="t-nav" style="font-size: 16px; width: 76px; height: 34px" @click="fav">{{favText}}</text>
+      </div>
+
+      <div class="body">
+        <text class="e-meta" style="font-size: 12px" if="{{meta}}">{{meta}}</text>
+
+        <div class="blk" for="{{secs}}" tid="i">
+          <text class="b-k {{$item.t}}" if="{{$item.k}}" style="font-size: 12px">{{$item.k}}</text>
+          <text class="b-g {{$item.t}}" if="{{$item.g}}" style="font-size: 15px">{{$item.g}}</text>
+          <text class="b-c {{$item.t}}" if="{{$item.c}}" style="font-size: 12px">{{$item.c}}</text>
+        </div>
+
+        <text class="t-sub" style="font-size: 12px; width: 100%">{{foot}}</text>
+        <div class="gap"></div>
+      </div>
+    </scroll>
+  </div>
+</template>
+
+<script>
+import router from '@system.router'
+import { sections, senseCount, isFav } from '../../common/core/dict-format'
+
+export default {
+  private: {
+    head: '词条',
+    meta: '',
+    foot: '',
+    secs: [],
+    favText: '收藏',
+    ch: ''
+  },
+
+  onShow() {
+    const app = this.$app.$def
+    const e = app.ch
+    if (!e) {
+      this.head = '词条'
+      this.meta = '没有词条数据，返回重查一次'
+      this.secs = []
+      this.foot = ''
+      return
+    }
+    this.ch = e.h
+    this.head = e.y ? (e.h + '　' + e.y) : e.h
+    const m = []
+    if (e.r) m.push(e.r + '部')
+    if (e.b) m.push(e.b + '画')
+    if (e.j && e.j !== e.h) m.push('简 ' + e.j)
+    this.meta = m.join('　')
+    this.secs = sections(e)
+    this.foot = '共 ' + senseCount(e) + ' 条义项 · 词性与今译为本词典整理，例句取自公版古籍'
+    this.favText = isFav(app.bookmarks || [], e.h) ? '已收藏' : '收藏'
+  },
+
+  fav() {
+    if (!this.ch) return
+    const app = this.$app.$def
+    app.tap()
+    this.favText = app.toggleBookmark(this.ch) ? '已收藏' : '收藏'
+  },
+
+  back() { this.$app.$def.tap(); router.back() }
+}
+</script>
+
+<style>
+  @import '../../common/style/base.css';
+  .body { width: 100%; padding-left: 14px; padding-right: 14px; flex-direction: column; flex-shrink: 0; }
+  .e-meta { color: #8e8e93; width: 100%; }
+  .blk { width: 100%; flex-direction: column; flex-shrink: 0; margin-top: 8px; }
+  .b-k { color: #f7b336; width: 100%; }
+  /* 用法层：hd 段标题 / pos 词性行 / it 用法条 */
+  .hd { color: #54cc58; }
+  .pos { color: #ffffff; }
+  .it { color: #e6e9ee; }
+  .b-g { color: #e6e9ee; width: 100%; }
+  .b-c { color: #7aa7ff; width: 100%; margin-top: 2px; }
+  .gap { width: 100%; height: 16px; }
+</style>
